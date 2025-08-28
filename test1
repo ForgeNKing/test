@@ -65,13 +65,6 @@ try {
 
 try { Add-Section "ipconfig /all" (ipconfig /all | Out-String) } catch {}
 
-if ($cs -and $cs.PartOfDomain) {
-    try {
-        $du = net user /domain | Out-String
-        Add-Section "Domain users" $du
-        $du | Out-File -FilePath 'C:\Users\Public\users.txt' -Encoding utf8
-    } catch {}
-}
 
 "=== Done: $OutFile ===" | Add-Content -Path $OutFile -Encoding utf8
 
